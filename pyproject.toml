@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cache-insight"
+version = "0.1.0"
+description = "A Redis-based testing tool that monitors and validates cache performance and data integrity during automated test runs"
+authors = [{name = "Cache Insight Team", email = "dev@example.com"}]
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.7"
+dependencies = [
+    "redis>=4.0.0",
+    "pytest>=6.0.0",
+    "types-redis>=4.0.0"
+]
+
+[project.optional-dependencies]
+test = ["pytest>=6.0.0", "pytest-cov"]
+development = ["black", "flake8", "mypy"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cache_insight*"]
