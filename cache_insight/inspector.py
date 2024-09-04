@@ -1,50 +1,44 @@
-import time
+# CacheInsight - Redis Inspector
 import redis
-from typing import Dict, Any, Optional, ContextManager
-from contextlib import contextmanager
-
-from .monitor import RedisMonitor
-from .analyzer import MetricsAnalyzer
-
+from typing import Any, Dict
+from .monitor import CacheMonitor
 
 class CacheInspector:
-    """
-    Main class for inspecting Redis cache behavior during tests.
-    Tracks operations, analyzes performance, and validates data integrity.
-    """
-    
-    def __init__(self, redis_host: str = 'localhost', redis_port: int = 6379):
-        self.redis_client = redis.Redis(host=redis_host, port=redis_port, decode_responses=True)
-        self.monitor = RedisMonitor(self.redis_client)
-        self.analyzer = MetricsAnalyzer()
+    def __init__(self, redis_client: redis.Redis, monitor: CacheMonitor):
+        self.redis_client = redis_client
+        self.monitor = monitor
         
-    def start_monitoring(self):
-        """Start tracking Redis operations"""
-        self.monitor.start_tracking()
-        
-    def stop_monitoring(self):
-        """Stop tracking Redis operations"""
-        self.monitor.stop_tracking()
-        
-    @contextmanager
-    def monitor(self) -> ContextManager:
-        """Context manager for monitoring Redis during test execution"""
-        self.start_monitoring()
+    def get_cached_value(self, key: str) -> Any:
+        """Get value from cache and track hit/miss"""
         try:
-            yield self
-        finally:
-            self.stop_monitoring()
-            self.analyzer.process_operations(self.monitor.get_operations())
+            value = self.redis_client.get(key)
+            if value is not None:
+                self.monitor.record_cache_hit()
+            else:
+                self.monitor.record_cache_miss()
+            return value
+        except Exception as e:
+            self.monitor.record_cache_miss()  # Treat errors as misses
+            raise e
             
-    def get_metrics(self) -> Dict[str, Any]:
-        """Get collected metrics after monitoring"""
-        return {
-            'hit_ratio': self.analyzer.hit_ratio,
-            'operation_count': len(self.monitor.get_operations()),
-            'total_time': self.analyzer.total_time,
-            'data_integrity_issues': self.analyzer.data_integrity_issues
-        }
+    def set_cached_value(self, key: str, value: Any, ttl: int = 3600) -> bool:
+        """Set value in cache and track operation"""
+        try:
+            result = self.redis_client.setex(key, ttl, value)
+            self.monitor.track_operation('SET')
+            return result
+        except Exception as e:
+            raise e
+            
+    def validate_data_integrity(self, key: str, expected_value: Any) -> Dict[str, Any]:
+        """Validate that cached value matches expected value"""
+        cached_value = self.get_cached_value(key)
         
-    def validate_data_integrity(self, expected_state: Dict[str, Any]) -> bool:
-        """Validate that cached values match expected application state"""
-        return self.analyzer.validate_integrity(expected_state)
+        is_valid = cached_value == expected_value
+        return {
+            'key': key,
+            'expected': expected_value,
+            'cached': cached_value,
+            'is_valid': is_valid,
+            'match': is_valid
+        }
