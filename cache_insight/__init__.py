@@ -1,18 +1,7 @@
-"""
-Cache Insight - Redis-based testing tool
+from .monitor import Monitor
+from .inspector import Inspector
+from .validator import CacheIntegrityValidator
 
-Provides monitoring and validation capabilities for Redis caching layers during testing.
-"""
-
-from .inspector import CacheInspector
-from .monitor import RedisMonitor
-from .analyzer import MetricsAnalyzer
-
-__version__ = "0.1.0"
+__version__ = "0.1.4"
 __author__ = "Cache Insight Team"
-
-__all__ = [
-    "CacheInspector",
-    "RedisMonitor",
-    "MetricsAnalyzer"
-]
+__all__ = ["Monitor", "Inspector", "CacheIntegrityValidator"]
