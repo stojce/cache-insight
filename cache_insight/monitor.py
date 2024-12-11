@@ -1,47 +1,59 @@
-# CacheInsight - Redis Operation Monitor
-import time
-from collections import defaultdict
-from typing import Dict, Any, Optional
+# CacheInsight Monitor
+# Tracks Redis operations during test execution
 
 class CacheMonitor:
     def __init__(self):
-        self.operation_counts = defaultdict(int)
+        self.reset_stats()
+    
+    def reset_stats(self):
+        """Reset all monitoring statistics"""
+        self.operation_count = 0
+        self.get_operations = 0
+        self.set_operations = 0
         self.hit_count = 0
         self.miss_count = 0
-        self.start_time = time.time()
+        self.cache_size = 0
+    
+    def track_operation(self, op_type, key, value=None, exists=False):
+        """Track a Redis operation
         
-    def track_operation(self, operation_type: str) -> None:
-        """Track a Redis operation by type"""
-        self.operation_counts[operation_type] += 1
+        Args:
+            op_type (str): Type of operation ('get', 'set', etc.)
+            key (str): The cache key being operated on
+            value: The value associated with the operation
+            exists (bool): For GET operations, whether key existed
+        """
+        self.operation_count += 1
         
-    def record_cache_hit(self) -> None:
-        """Record a cache hit"""
-        self.hit_count += 1
-        
-    def record_cache_miss(self) -> None:
-        """Record a cache miss"""
-        self.miss_count += 1
-        
-    def get_stats(self) -> Dict[str, Any]:
+        if op_type == 'get':
+            self.get_operations += 1
+            if exists:
+                self.hit_count += 1
+            else:
+                self.miss_count += 1
+        elif op_type == 'set':
+            self.set_operations += 1
+    
+    def get_hit_ratio(self):
+        """Calculate the cache hit ratio as a percentage"""
+        if self.get_operations == 0:
+            return 0.0
+        return (self.hit_count / self.get_operations) * 100
+    
+    def get_miss_ratio(self):
+        """Calculate the cache miss ratio as a percentage"""
+        if self.get_operations == 0:
+            return 0.0
+        return (self.miss_count / self.get_operations) * 100
+    
+    def get_stats(self):
         """Get current monitoring statistics"""
-        total_operations = sum(self.operation_counts.values())
-        total_requests = self.hit_count + self.miss_count
-        hit_ratio = (self.hit_count / total_requests * 100) if total_requests > 0 else 0
-        miss_ratio = (self.miss_count / total_requests * 100) if total_requests > 0 else 0
-        
         return {
-            'total_operations': total_operations,
-            'operation_breakdown': dict(self.operation_counts),
+            'operation_count': self.operation_count,
+            'get_operations': self.get_operations,
+            'set_operations': self.set_operations,
             'hit_count': self.hit_count,
             'miss_count': self.miss_count,
-            'hit_ratio_percent': round(hit_ratio, 2),
-            'miss_ratio_percent': round(miss_ratio, 2),
-            'uptime_seconds': round(time.time() - self.start_time, 2)
+            'hit_ratio_percent': round(self.get_hit_ratio(), 2),
+            'miss_ratio_percent': round(self.get_miss_ratio(), 2)
         }
-        
-    def reset(self) -> None:
-        """Reset all counters to zero"""
-        self.operation_counts.clear()
-        self.hit_count = 0
-        self.miss_count = 0
-        self.start_time = time.time()
