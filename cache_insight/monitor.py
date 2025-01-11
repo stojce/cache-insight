@@ -1,59 +1,71 @@
 # CacheInsight Monitor
-# Tracks Redis operations during test execution
+# Handles real-time monitoring of Redis operations
+import time
+from collections import defaultdict
 
-class CacheMonitor:
+class Monitor:
     def __init__(self):
-        self.reset_stats()
-    
-    def reset_stats(self):
+        self.reset()
+        
+    def reset(self):
         """Reset all monitoring statistics"""
-        self.operation_count = 0
-        self.get_operations = 0
-        self.set_operations = 0
-        self.hit_count = 0
-        self.miss_count = 0
-        self.cache_size = 0
+        self.stats = {
+            'operations': [],
+            'hit_count': 0,
+            'miss_count': 0,
+            'start_time': time.time(),
+            'listeners': []  # Track registered listeners
+        }
+        
+    def register_listener(self, callback):
+        """Register a callback to receive operation events"""
+        self.stats['listeners'].append(callback)
+        return len(self.stats['listeners']) - 1
     
-    def track_operation(self, op_type, key, value=None, exists=False):
-        """Track a Redis operation
+    def remove_listener(self, listener_id):
+        """Remove a listener by ID"""
+        if 0 <= listener_id < len(self.stats['listeners']):
+            del self.stats['listeners'][listener_id]
+    
+    def track_operation(self, op_type, key, value=None, hit_status=None):
+        """Record a Redis operation with timestamp and metadata"""
+        op = {
+            'timestamp': time.time(),
+            'type': op_type,
+            'key': key,
+            'value': value,
+            'hit': hit_status
+        }
+        self.stats['operations'].append(op)
         
-        Args:
-            op_type (str): Type of operation ('get', 'set', etc.)
-            key (str): The cache key being operated on
-            value: The value associated with the operation
-            exists (bool): For GET operations, whether key existed
-        """
-        self.operation_count += 1
+        # Update hit/miss counts
+        if hit_status is True:
+            self.stats['hit_count'] += 1
+        elif hit_status is False:
+            self.stats['miss_count'] += 1
         
-        if op_type == 'get':
-            self.get_operations += 1
-            if exists:
-                self.hit_count += 1
-            else:
-                self.miss_count += 1
-        elif op_type == 'set':
-            self.set_operations += 1
+        # Notify all registered listeners
+        for listener in list(self.stats['listeners']):  # Use copy to prevent modification during iteration
+            try:
+                listener(op)
+            except Exception as e:
+                print(f"Error in monitor listener: {e}")
     
     def get_hit_ratio(self):
-        """Calculate the cache hit ratio as a percentage"""
-        if self.get_operations == 0:
+        """Calculate the cache hit ratio"""
+        total = self.stats['hit_count'] + self.stats['miss_count']
+        if total == 0:
             return 0.0
-        return (self.hit_count / self.get_operations) * 100
-    
-    def get_miss_ratio(self):
-        """Calculate the cache miss ratio as a percentage"""
-        if self.get_operations == 0:
-            return 0.0
-        return (self.miss_count / self.get_operations) * 100
+        return self.stats['hit_count'] / total
     
     def get_stats(self):
-        """Get current monitoring statistics"""
+        """Return current monitoring statistics"""
+        duration = time.time() - self.stats['start_time']
         return {
-            'operation_count': self.operation_count,
-            'get_operations': self.get_operations,
-            'set_operations': self.set_operations,
-            'hit_count': self.hit_count,
-            'miss_count': self.miss_count,
-            'hit_ratio_percent': round(self.get_hit_ratio(), 2),
-            'miss_ratio_percent': round(self.get_miss_ratio(), 2)
+            'duration': duration,
+            'total_operations': len(self.stats['operations']),
+            'hit_count': self.stats['hit_count'],
+            'miss_count': self.stats['miss_count'],
+            'hit_ratio': self.get_hit_ratio(),
+            'operations': self.stats['operations'][-100:]  # Return last 100 ops to avoid memory issues
         }
