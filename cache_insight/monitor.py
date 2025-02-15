@@ -1,71 +1,89 @@
-# CacheInsight Monitor
-# Handles real-time monitoring of Redis operations
+# CacheInsight - Redis-based testing tool
+# Monitor module for tracking Redis operations during tests
 import time
-from collections import defaultdict
+import redis
+from typing import Dict, List, Optional, Any
 
-class Monitor:
-    def __init__(self):
-        self.reset()
+class RedisMonitor:
+    def __init__(self, host='localhost', port=6379, db=0):
+        self.host = host
+        self.port = port
+        self.db = db
+        self.redis_client = None
+        self.operation_log = []
+        self.start_time = None
         
-    def reset(self):
-        """Reset all monitoring statistics"""
-        self.stats = {
-            'operations': [],
-            'hit_count': 0,
-            'miss_count': 0,
-            'start_time': time.time(),
-            'listeners': []  # Track registered listeners
-        }
+    def connect(self):
+        """Establish Redis connection"""
+        try:
+            if self.redis_client is None:
+                self.redis_client = redis.Redis(host=self.host, port=self.port, db=self.db)
+            return True
+        except Exception as e:
+            print(f"Failed to connect to Redis: {e}")
+            return False
+    
+    def disconnect(self):
+        """Close Redis connection"""
+        if self.redis_client:
+            self.redis_client.close()
+            self.redis_client = None
+    
+    def start_tracking(self):
+        """Start monitoring Redis operations"""
+        if not self.connect():
+            return False
         
-    def register_listener(self, callback):
-        """Register a callback to receive operation events"""
-        self.stats['listeners'].append(callback)
-        return len(self.stats['listeners']) - 1
+        self.start_time = time.time()
+        self.operation_log = []
+        return True
     
-    def remove_listener(self, listener_id):
-        """Remove a listener by ID"""
-        if 0 <= listener_id < len(self.stats['listeners']):
-            del self.stats['listeners'][listener_id]
+    def log_operation(self, operation_type: str, key: str, value: Any = None):
+        """Log a Redis operation with timestamp"""
+        if self.start_time is not None:
+            timestamp = time.time() - self.start_time
+            self.operation_log.append({
+                'timestamp': timestamp,
+                'operation': operation_type,
+                'key': key,
+                'value': value,
+                'time': time.time()
+            })
     
-    def track_operation(self, op_type, key, value=None, hit_status=None):
-        """Record a Redis operation with timestamp and metadata"""
-        op = {
-            'timestamp': time.time(),
-            'type': op_type,
-            'key': key,
-            'value': value,
-            'hit': hit_status
-        }
-        self.stats['operations'].append(op)
+    def get_operations(self) -> List[Dict]:
+        """Get all logged operations"""
+        return self.operation_log
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get statistics about tracked operations"""
+        total_ops = len(self.operation_log)
+        if total_ops == 0:
+            return {
+                'total_operations': 0,
+                'operations_by_type': {},
+                'duration': 0,
+                'operations_per_second': 0
+            }
         
-        # Update hit/miss counts
-        if hit_status is True:
-            self.stats['hit_count'] += 1
-        elif hit_status is False:
-            self.stats['miss_count'] += 1
+        ops_by_type = {}
+        for op in self.operation_log:
+            op_type = op['operation']
+            if op_type in ops_by_type:
+                ops_by_type[op_type] += 1
+            else:
+                ops_by_type[op_type] = 1
         
-        # Notify all registered listeners
-        for listener in list(self.stats['listeners']):  # Use copy to prevent modification during iteration
-            try:
-                listener(op)
-            except Exception as e:
-                print(f"Error in monitor listener: {e}")
-    
-    def get_hit_ratio(self):
-        """Calculate the cache hit ratio"""
-        total = self.stats['hit_count'] + self.stats['miss_count']
-        if total == 0:
-            return 0.0
-        return self.stats['hit_count'] / total
-    
-    def get_stats(self):
-        """Return current monitoring statistics"""
-        duration = time.time() - self.stats['start_time']
+        duration = time.time() - self.start_time
+        ops_per_sec = total_ops / duration if duration > 0 else 0
+        
         return {
+            'total_operations': total_ops,
+            'operations_by_type': ops_by_type,
             'duration': duration,
-            'total_operations': len(self.stats['operations']),
-            'hit_count': self.stats['hit_count'],
-            'miss_count': self.stats['miss_count'],
-            'hit_ratio': self.get_hit_ratio(),
-            'operations': self.stats['operations'][-100:]  # Return last 100 ops to avoid memory issues
+            'operations_per_second': ops_per_sec
         }
+    
+    def reset(self):
+        """Reset the monitor state"""
+        self.operation_log = []
+        self.start_time = None
