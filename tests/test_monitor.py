@@ -1,63 +1,43 @@
 import unittest
-from cache_insight.monitor import CacheMonitor
+from cache_insight.monitor import Monitor
 
-class TestCacheMonitor(unittest.TestCase):
+class TestMonitor(unittest.TestCase):
     def setUp(self):
-        self.monitor = CacheMonitor()
-    
-    def test_initial_stats(self):
-        stats = self.monitor.get_stats()
-        self.assertEqual(stats['operation_count'], 0)
-        self.assertEqual(stats['get_operations'], 0)
-        self.assertEqual(stats['set_operations'], 0)
-        self.assertEqual(stats['hit_count'], 0)
-        self.assertEqual(stats['miss_count'], 0)
-        self.assertEqual(stats['hit_ratio_percent'], 0.0)
-        self.assertEqual(stats['miss_ratio_percent'], 0.0)
-    
-    def test_track_get_operation_hit(self):
-        self.monitor.track_operation('get', 'key1', exists=True)
-        stats = self.monitor.get_stats()
-        self.assertEqual(stats['get_operations'], 1)
-        self.assertEqual(stats['hit_count'], 1)
-        self.assertEqual(stats['miss_count'], 0)
-        self.assertEqual(stats['hit_ratio_percent'], 100.0)
-    
-    def test_track_get_operation_miss(self):
-        self.monitor.track_operation('get', 'key1', exists=False)
-        stats = self.monitor.get_stats()
-        self.assertEqual(stats['get_operations'], 1)
-        self.assertEqual(stats['miss_count'], 1)
-        self.assertEqual(stats['hit_count'], 0)
-        self.assertEqual(stats['miss_ratio_percent'], 100.0)
-    
-    def test_track_mixed_operations(self):
-        # 2 hits and 2 misses
-        self.monitor.track_operation('get', 'key1', exists=True)
-        self.monitor.track_operation('get', 'key2', exists=False)
-        self.monitor.track_operation('get', 'key3', exists=True)
-        self.monitor.track_operation('get', 'key4', exists=False)
+        self.monitor = Monitor()
         
-        stats = self.monitor.get_stats()
-        self.assertEqual(stats['get_operations'], 4)
-        self.assertEqual(stats['hit_count'], 2)
-        self.assertEqual(stats['miss_count'], 2)
-        self.assertEqual(stats['hit_ratio_percent'], 50.0)
-        self.assertEqual(stats['miss_ratio_percent'], 50.0)
-    
-    def test_track_set_operation(self):
-        self.monitor.track_operation('set', 'key1', 'value1')
-        stats = self.monitor.get_stats()
-        self.assertEqual(stats['set_operations'], 1)
-        self.assertEqual(stats['get_operations'], 0)
-    
-    def test_reset_stats(self):
-        self.monitor.track_operation('get', 'key1', exists=True)
-        self.monitor.reset_stats()
+    def test_initialization(self):
+        self.assertEqual(len(self.monitor.get_tracked_operations()), 0)
+        self.assertEqual(len(self.monitor.listeners), 0)
         
-        stats = self.monitor.get_stats()
-        self.assertEqual(stats['operation_count'], 0)
-        self.assertEqual(stats['get_operations'], 0)
-        self.assertEqual(stats['set_operations'], 0)
-        self.assertEqual(stats['hit_count'], 0)
-        self.assertEqual(stats['miss_count'], 0)
+    def test_start_stop_monitoring(self):
+        self.monitor.start_monitoring()
+        self.monitor.stop_monitoring()
+        # Verify cleanup happened
+        self.assertEqual(len(self.monitor.listeners), 0)
+        
+    def test_register_listener(self):
+        class MockListener:
+            def cleanup(self):
+                pass
+        
+        self.monitor.register_listener(MockListener())
+        self.assertEqual(len(self.monitor.listeners), 1)
+        
+    def test_cleanup_listeners(self):
+        class MockListener:
+            def __init__(self):
+                self.cleaned_up = False
+            
+            def cleanup(self):
+                self.cleaned_up = True
+        
+        listener = MockListener()
+        self.monitor.register_listener(listener)
+        self.monitor._cleanup_listeners()
+        self.assertTrue(listener.cleaned_up)
+        self.assertEqual(len(self.monitor.listeners), 0)
+        
+    def test_reset(self):
+        self.monitor.tracked_operations = ["op1", "op2"]
+        self.monitor.reset()
+        self.assertEqual(len(self.monitor.get_tracked_operations()), 0)
