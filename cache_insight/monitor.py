@@ -1,38 +1,44 @@
 # CacheInsight Monitor
-# Handles real-time monitoring of Redis operations
+# Handles real-time tracking of Redis operations during tests
 
 class Monitor:
     def __init__(self):
-        self.tracked_operations = []
-        self.listeners = []
+        self.operations = []
+        self.listeners = {}
         
-    def start_monitoring(self):
-        """Begin monitoring Redis operations"""
-        print("Starting Redis monitoring...")
+    def start_tracking(self):
+        """Initialize tracking for Redis operations"""
+        # Clear any previous operations to avoid accumulation
+        self.operations = []
+        self._setup_redis_event_listeners()
+    
+    def stop_tracking(self):
+        """Stop monitoring and clean up resources"""
+        self._remove_redis_event_listeners()
+        self.operations = []
         
-    def stop_monitoring(self):
-        """Stop monitoring and cleanup resources"""
-        print("Stopping Redis monitoring...")
-        self._cleanup_listeners()
+    def _setup_redis_event_listeners(self):
+        """Setup event listeners for Redis operations"""
+        # Implementation for setting up listeners
+        pass
         
-    def _cleanup_listeners(self):
-        """Clean up registered event listeners to prevent memory leaks"""
-        for listener in self.listeners:
-            try:
-                listener.cleanup()
-            except AttributeError:
-                pass  # Listener doesn't have cleanup method
-        self.listeners.clear()
+    def _remove_redis_event_listeners(self):
+        """Remove all registered event listeners"""
+        # Clean up all listeners to prevent memory leaks
+        for listener_id, handler in self.listeners.items():
+            self._unregister_listener(listener_id)
+        self.listeners = {}
         
-    def register_listener(self, listener):
-        """Register a listener for Redis events"""
-        self.listeners.append(listener)
+    def _unregister_listener(self, listener_id):
+        """Unregister a specific listener"""
+        # Implementation for removing listener
+        pass
         
-    def get_tracked_operations(self):
-        """Return list of tracked operations"""
-        return self.tracked_operations
+    def get_operations(self):
+        """Return collected operations"""
+        return self.operations.copy()
         
     def reset(self):
-        """Reset the monitor state"""
-        self.tracked_operations = []
-        self._cleanup_listeners()
+        """Reset the monitor state completely"""
+        self.stop_tracking()
+        self.start_tracking()
