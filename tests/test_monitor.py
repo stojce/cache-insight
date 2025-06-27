@@ -1,43 +1,43 @@
-import unittest
-from cache_insight.monitor import Monitor
+# Tests for CacheMonitor
+def test_monitor_initialization():
+    from cache_insight.monitor import CacheMonitor
+    monitor = CacheMonitor()
+    assert monitor.hit_count == 0
+    assert monitor.miss_count == 0
+    assert monitor.operation_count == 0
+    assert len(monitor.operations_log) == 0
 
-class TestMonitor(unittest.TestCase):
-    def setUp(self):
-        self.monitor = Monitor()
-        
-    def test_initialization(self):
-        self.assertEqual(len(self.monitor.get_tracked_operations()), 0)
-        self.assertEqual(len(self.monitor.listeners), 0)
-        
-    def test_start_stop_monitoring(self):
-        self.monitor.start_monitoring()
-        self.monitor.stop_monitoring()
-        # Verify cleanup happened
-        self.assertEqual(len(self.monitor.listeners), 0)
-        
-    def test_register_listener(self):
-        class MockListener:
-            def cleanup(self):
-                pass
-        
-        self.monitor.register_listener(MockListener())
-        self.assertEqual(len(self.monitor.listeners), 1)
-        
-    def test_cleanup_listeners(self):
-        class MockListener:
-            def __init__(self):
-                self.cleaned_up = False
-            
-            def cleanup(self):
-                self.cleaned_up = True
-        
-        listener = MockListener()
-        self.monitor.register_listener(listener)
-        self.monitor._cleanup_listeners()
-        self.assertTrue(listener.cleaned_up)
-        self.assertEqual(len(self.monitor.listeners), 0)
-        
-    def test_reset(self):
-        self.monitor.tracked_operations = ["op1", "op2"]
-        self.monitor.reset()
-        self.assertEqual(len(self.monitor.get_tracked_operations()), 0)
+def test_record_cache_hit():
+    from cache_insight.monitor import CacheMonitor
+    monitor = CacheMonitor()
+    monitor.record_cache_hit("test_key")
+    assert monitor.hit_count == 1
+    assert monitor.operation_count == 1
+    assert monitor.operations_log[0]['operation'] == 'GET'
+    assert monitor.operations_log[0]['key'] == 'test_key'
+
+def test_record_cache_miss():
+    from cache_insight.monitor import CacheMonitor
+    monitor = CacheMonitor()
+    monitor.record_cache_miss("test_key")
+    assert monitor.miss_count == 1
+    assert monitor.operation_count == 1
+    assert monitor.operations_log[0]['operation'] == 'MISS'
+    assert monitor.operations_log[0]['key'] == 'test_key'
+
+def test_hit_ratio_calculation():
+    from cache_insight.monitor import CacheMonitor
+    monitor = CacheMonitor()
+    # No operations - ratio should be 0
+    assert monitor.get_hit_ratio() == 0.0
+    
+    # 5 hits, 0 misses - ratio should be 1.0
+    for i in range(5):
+        monitor.record_cache_hit(f"key{i}")
+    assert monitor.get_hit_ratio() == 1.0
+    
+    # 7 hits, 8 misses - ratio should be 0.4666...
+    for i in range(8):
+        monitor.record_cache_miss(f"miss_key{i}")
+    expected_ratio = 5 / (5 + 8)
+    assert abs(monitor.get_hit_ratio() - expected_ratio) < 0.001
