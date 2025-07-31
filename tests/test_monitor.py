@@ -1,43 +1,43 @@
-# Tests for CacheMonitor
-def test_monitor_initialization():
-    from cache_insight.monitor import CacheMonitor
-    monitor = CacheMonitor()
-    assert monitor.hit_count == 0
-    assert monitor.miss_count == 0
-    assert monitor.operation_count == 0
-    assert len(monitor.operations_log) == 0
+import pytest
+import asyncio
+from unittest.mock import Mock
+from cache_insight.monitor import RedisMonitor
 
-def test_record_cache_hit():
-    from cache_insight.monitor import CacheMonitor
-    monitor = CacheMonitor()
-    monitor.record_cache_hit("test_key")
-    assert monitor.hit_count == 1
-    assert monitor.operation_count == 1
-    assert monitor.operations_log[0]['operation'] == 'GET'
-    assert monitor.operations_log[0]['key'] == 'test_key'
-
-def test_record_cache_miss():
-    from cache_insight.monitor import CacheMonitor
-    monitor = CacheMonitor()
-    monitor.record_cache_miss("test_key")
-    assert monitor.miss_count == 1
-    assert monitor.operation_count == 1
-    assert monitor.operations_log[0]['operation'] == 'MISS'
-    assert monitor.operations_log[0]['key'] == 'test_key'
-
-def test_hit_ratio_calculation():
-    from cache_insight.monitor import CacheMonitor
-    monitor = CacheMonitor()
-    # No operations - ratio should be 0
-    assert monitor.get_hit_ratio() == 0.0
+def test_monitor_context_manager():
+    # Create a mock Redis client
+    mock_redis = Mock()
+    monitor = RedisMonitor(mock_redis)
     
-    # 5 hits, 0 misses - ratio should be 1.0
-    for i in range(5):
-        monitor.record_cache_hit(f"key{i}")
-    assert monitor.get_hit_ratio() == 1.0
+    async def run_test():
+        async with monitor as m:
+            # Perform some operations
+            m.record_operation('GET', 'test_key', True, 50)
+            m.record_operation('SET', 'test_key', True, 50)
+            m.record_operation('GET', 'missing_key', False)
+            
+        # Verify metrics after context exit
+        metrics = m.get_performance_metrics()
+        assert metrics['hit_count'] == 1
+        assert metrics['miss_count'] == 1
+        assert metrics['total_operations'] == 3
+        
+    asyncio.run(run_test())
+
+def test_monitor_operations_tracking():
+    mock_redis = Mock()
+    monitor = RedisMonitor(mock_redis)
     
-    # 7 hits, 8 misses - ratio should be 0.4666...
-    for i in range(8):
-        monitor.record_cache_miss(f"miss_key{i}")
-    expected_ratio = 5 / (5 + 8)
-    assert abs(monitor.get_hit_ratio() - expected_ratio) < 0.001
+    monitor.start_monitoring()
+    monitor.record_operation('GET', 'key1', True, 100)
+    monitor.record_operation('SET', 'key2', True, 80)
+    monitor.record_operation('GET', 'key3', True, 60)
+    monitor.stop_monitoring()
+    
+    metrics = monitor.get_performance_metrics()
+    assert metrics['hit_count'] == 2
+    assert metrics['miss_count'] == 0
+    assert metrics['hit_ratio'] == 1.0
+    
+    ops = monitor.operation_stats
+    assert ops['GET'] == 2
+    assert ops['SET'] == 1
