@@ -1,44 +1,52 @@
-# CacheInsight - Redis Inspector
+# Cache Inspector Module
 import redis
-from typing import Any, Dict
-from .monitor import CacheMonitor
+import time
+from typing import Dict, Any, Optional
 
-class CacheInspector:
-    def __init__(self, redis_client: redis.Redis, monitor: CacheMonitor):
-        self.redis_client = redis_client
-        self.monitor = monitor
+class RedisInspector:
+    def __init__(self, connection_string: str):
+        self.connection = redis.from_url(connection_string)
+        self.operation_log = []
+        self._tracked_keys = set()
+    
+    def start_tracking(self):
+        """Initialize tracking and record starting state"""
+        self._clear_existing_listeners()
+        self.operation_log.clear()
+        self._tracked_keys.clear()
         
-    def get_cached_value(self, key: str) -> Any:
-        """Get value from cache and track hit/miss"""
-        try:
-            value = self.redis_client.get(key)
-            if value is not None:
-                self.monitor.record_cache_hit()
-            else:
-                self.monitor.record_cache_miss()
-            return value
-        except Exception as e:
-            self.monitor.record_cache_miss()  # Treat errors as misses
-            raise e
-            
-    def set_cached_value(self, key: str, value: Any, ttl: int = 3600) -> bool:
-        """Set value in cache and track operation"""
-        try:
-            result = self.redis_client.setex(key, ttl, value)
-            self.monitor.track_operation('SET')
-            return result
-        except Exception as e:
-            raise e
-            
-    def validate_data_integrity(self, key: str, expected_value: Any) -> Dict[str, Any]:
-        """Validate that cached value matches expected value"""
-        cached_value = self.get_cached_value(key)
+    def _clear_existing_listeners(self):
+        """Remove any existing pubsub listeners to prevent accumulation"""
+        if hasattr(self, '_pubsub') and self._pubsub:
+            self._pubsub.close()
+        self._pubsub = self.connection.pubsub()
+    
+    def track_operations(self, duration: int = 30):
+        """Listen for Redis commands for the specified duration"""
+        self._pubsub.psubscribe('__keyspace@*__:*')
+        start_time = time.time()
         
-        is_valid = cached_value == expected_value
-        return {
-            'key': key,
-            'expected': expected_value,
-            'cached': cached_value,
-            'is_valid': is_valid,
-            'match': is_valid
-        }
+        while time.time() - start_time < duration:
+            message = self._pubsub.get_message(ignore_subscribe_messages=True)
+            if message:
+                self.operation_log.append({
+                    'time': time.time(),
+                    'channel': message['channel'],
+                    'data': message['data']
+                })
+            time.sleep(0.01)  # Prevent excessive CPU usage
+    
+    def get_tracked_operations(self) -> list:
+        """Return collected operations"""
+        return self.operation_log.copy()
+    
+    def add_tracked_key(self, key: str):
+        """Add a key to be monitored for changes"""
+        self._tracked_keys.add(key)
+    
+    def cleanup(self):
+        """Clean up resources"""
+        if hasattr(self, '_pubsub') and self._pubsub:
+            self._pubsub.close()
+        self.operation_log.clear()
+        self._tracked_keys.clear()
